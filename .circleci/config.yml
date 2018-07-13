@@ -6,7 +6,7 @@ build_allways: &build_allways
     tags:
       only: /.*/
 defaults: &defaults
-  working_directory: /home/circleci/.go_workspace/src/github.com/kubeless/kubeless
+  working_directory: /home/circleci/.go_workspace/src/github.com/kubeless/kinesis-trigger
   environment:
     GOPATH: /home/circleci/.go_workspace
     CONTROLLER_IMAGE_NAME: bitnami/kubeless-controller-manager
