@@ -33,13 +33,11 @@ import (
 
 	kinesisApi "github.com/kubeless/kinesis-trigger/pkg/apis/kubeless/v1beta1"
 	"github.com/kubeless/kinesis-trigger/pkg/client/clientset/versioned"
-	"github.com/kubeless/kinesis-trigger/pkg/client/informers/externalversions"
 	kinesisInformers "github.com/kubeless/kinesis-trigger/pkg/client/informers/externalversions/kubeless/v1beta1"
 	"github.com/kubeless/kinesis-trigger/pkg/event-consumers/kinesis"
 	"github.com/kubeless/kinesis-trigger/pkg/utils"
 	kubelessApi "github.com/kubeless/kubeless/pkg/apis/kubeless/v1beta1"
 	kubelessversioned "github.com/kubeless/kubeless/pkg/client/clientset/versioned"
-	kubelessexternalversion "github.com/kubeless/kubeless/pkg/client/informers/externalversions"
 	kubelessInformers "github.com/kubeless/kubeless/pkg/client/informers/externalversions/kubeless/v1beta1"
 	kubelessutils "github.com/kubeless/kubeless/pkg/utils"
 )
@@ -56,12 +54,13 @@ type KinesisTriggerController struct {
 	kinesisClient    versioned.Interface
 	kubernetesClient kubernetes.Interface
 	queue            workqueue.RateLimitingInterface
-	kinesisInformer  kinesisInformers.KinesisTriggerInformer
-	functionInformer kubelessInformers.FunctionInformer
+	kinesisInformer  cache.SharedIndexInformer
+	functionInformer cache.SharedIndexInformer
 }
 
 // KinesisTriggerConfig contains config for KinesisTriggerController
 type KinesisTriggerConfig struct {
+	KubeCli        kubernetes.Interface
 	TriggerClient  versioned.Interface
 	KubelessClient kubelessversioned.Interface
 }
@@ -70,13 +69,15 @@ type KinesisTriggerConfig struct {
 func NewKinesisTriggerController(cfg KinesisTriggerConfig) *KinesisTriggerController {
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
-	kinesisSharedInformers := externalversions.NewSharedInformerFactory(cfg.TriggerClient, 0)
-	kinesisInformer := kinesisSharedInformers.Kubeless().V1beta1().KinesisTriggers()
+	config, err := kubelessutils.GetKubelessConfig(cfg.KubeCli, kubelessutils.GetAPIExtensionsClientInCluster())
+	if err != nil {
+		logrus.Fatalf("Unable to read the configmap: %s", err)
+	}
+	kinesisInformer := kinesisInformers.NewKinesisTriggerInformer(cfg.TriggerClient, config.Data["functions-namespace"], 0, cache.Indexers{})
 
-	kubelessSharedInformers := kubelessexternalversion.NewSharedInformerFactory(cfg.KubelessClient, 0)
-	functionInformer := kubelessSharedInformers.Kubeless().V1beta1().Functions()
+	functionInformer := kubelessInformers.NewFunctionInformer(cfg.KubelessClient, config.Data["functions-namespace"], 0, cache.Indexers{})
 
-	kinesisInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	kinesisInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err == nil {
@@ -111,7 +112,7 @@ func NewKinesisTriggerController(cfg KinesisTriggerConfig) *KinesisTriggerContro
 		queue:            queue,
 	}
 
-	functionInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	functionInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			controller.FunctionAddedDeletedUpdated(obj, false)
 		},
@@ -134,8 +135,8 @@ func (c *KinesisTriggerController) Run(stopCh <-chan struct{}) {
 	c.logger.Info("Starting AWS Kinesis Trigger controller.")
 	defer c.logger.Info("Shutting down AWS Kinesis Trigger controller.")
 
-	go c.kinesisInformer.Informer().Run(stopCh)
-	go c.functionInformer.Informer().Run(stopCh)
+	go c.kinesisInformer.Run(stopCh)
+	go c.functionInformer.Run(stopCh)
 
 	if !c.waitForCacheSync(stopCh) {
 		return
@@ -145,7 +146,7 @@ func (c *KinesisTriggerController) Run(stopCh <-chan struct{}) {
 }
 
 func (c *KinesisTriggerController) waitForCacheSync(stopCh <-chan struct{}) bool {
-	if !cache.WaitForCacheSync(stopCh, c.kinesisInformer.Informer().HasSynced, c.functionInformer.Informer().HasSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.kinesisInformer.HasSynced, c.functionInformer.HasSynced) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for caches required for AWS Kinesis triggers controller to sync;"))
 		return false
 	}
@@ -190,7 +191,7 @@ func (c *KinesisTriggerController) syncKinesisTrigger(key string) error {
 		return err
 	}
 
-	obj, exists, err := c.kinesisInformer.Informer().GetIndexer().GetByKey(key)
+	obj, exists, err := c.kinesisInformer.GetIndexer().GetByKey(key)
 	if err != nil {
 		return fmt.Errorf("Error fetching object with key %s from store: %v", key, err)
 	}

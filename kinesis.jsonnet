@@ -18,9 +18,21 @@ local crd = [
   },
 ];
 
+local controllerEnv = [
+  {
+    name: "KUBELESS_NAMESPACE",
+    valueFrom: {fieldRef: {fieldPath: "metadata.namespace"}}
+  },
+  {
+    name: "KUBELESS_CONFIG",
+    value: "kubeless-config"
+  },
+];
+
 local controllerContainer =
   container.default("kinesis-trigger-controller", "bitnami/kinesis-trigger-controller:latest") +
-  container.imagePullPolicy("IfNotPresent");
+  container.imagePullPolicy("IfNotPresent") +
+  container.env(controllerEnv);
 
 local kubelessLabel = {kubeless: "kinesis-trigger-controller"};
 
