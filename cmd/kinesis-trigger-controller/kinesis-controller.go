@@ -50,6 +50,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		kinesisTriggerCfg := controller.KinesisTriggerConfig{
+			KubeCli:        kubelessutils.GetClient(),
 			TriggerClient:  kinesisClient,
 			KubelessClient: kubelessClient,
 		}
