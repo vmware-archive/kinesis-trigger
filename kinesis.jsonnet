@@ -14,7 +14,6 @@ local crd = [
     kind: "CustomResourceDefinition",
     metadata: objectMeta.name("kinesistriggers.kubeless.io"),
     spec: {group: "kubeless.io", version: "v1beta1", scope: "Namespaced", names: {plural: "kinesistriggers", singular: "kinesistrigger", kind: "KinesisTrigger"}},
-    description: "CRD object for Kinesis trigger type",
   },
 ];
 
