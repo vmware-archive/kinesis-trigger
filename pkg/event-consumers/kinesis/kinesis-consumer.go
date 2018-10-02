@@ -23,6 +23,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
+	"github.com/aws/aws-sdk-go/aws/ec2metadata"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -56,30 +59,44 @@ func createStreamProcessor(triggerObj *kinesisApi.KinesisTrigger, funcName, ns s
 
 	defer close(stoppedchan)
 
-	client := utils.GetClient()
-	secret, err := client.Core().Secrets(ns).Get(triggerObj.Spec.Secret, metav1.GetOptions{})
-	if err != nil {
-		logrus.Errorf("Failed to setup stream processor for Kinesis trigger: %s. Error getting secret: %s necessary to connect to "+
-			"AWS Kinesis service. Error: %v", triggerObj.Namespace+"/"+triggerObj.Name, triggerObj.Spec.Secret, err)
-		return
-	}
-	if _, ok := secret.Data["aws_access_key_id"]; !ok {
-		logrus.Errorf("Failed to setup stream processor for Kinesis trigger: %s. Error getting aws_access_key_id from the secret: %s "+
-			"necessary to connect to AWS Kinesis service. Error: %v", triggerObj.Namespace+"/"+triggerObj.Name, triggerObj.Spec.Secret, err)
-		return
-	}
-	if _, ok := secret.Data["aws_secret_access_key"]; !ok {
-		logrus.Errorf("Failed to setup stream processor for Kinesis trigger: %s. Error getting aws_secret_access_key from the secret: %s "+
-			"necessary to connect to AWS Kinesis service. Error: %v", triggerObj.Namespace+"/"+triggerObj.Name, triggerObj.Spec.Secret, err)
-		return
-	}
-	awsAccessKey := string(secret.Data["aws_access_key_id"][:])
-	awsSecretAccessKey := string(secret.Data["aws_secret_access_key"][:])
+	customCreds := credentials.NewChainCredentials(
+		[]credentials.Provider{
+			&credentials.EnvProvider{},
+			&credentials.SharedCredentialsProvider{},
+			&ec2rolecreds.EC2RoleProvider{Client: ec2metadata.New(session.Must(session.NewSession()))},
+		})
 
-	customCreds := credentials.NewStaticCredentials(awsAccessKey, awsSecretAccessKey, "")
+	client := utils.GetClient()
+	if triggerObj.Spec.Secret != "" {
+		secret, err := client.Core().Secrets(ns).Get(triggerObj.Spec.Secret, metav1.GetOptions{})
+		if err != nil {
+			logrus.Errorf("Failed to setup stream processor for Kinesis trigger: %s. Error getting secret: %s necessary to connect to "+
+				"AWS Kinesis service. Error: %v", triggerObj.Namespace+"/"+triggerObj.Name, triggerObj.Spec.Secret, err)
+			return
+		}
+		if _, ok := secret.Data["aws_access_key_id"]; !ok {
+			logrus.Errorf("Failed to setup stream processor for Kinesis trigger: %s. Error getting aws_access_key_id from the secret: %s "+
+				"necessary to connect to AWS Kinesis service. Error: %v", triggerObj.Namespace+"/"+triggerObj.Name, triggerObj.Spec.Secret, err)
+			return
+		}
+		if _, ok := secret.Data["aws_secret_access_key"]; !ok {
+			logrus.Errorf("Failed to setup stream processor for Kinesis trigger: %s. Error getting aws_secret_access_key from the secret: %s "+
+				"necessary to connect to AWS Kinesis service. Error: %v", triggerObj.Namespace+"/"+triggerObj.Name, triggerObj.Spec.Secret, err)
+			return
+		}
+
+		awsAccessKey := string(secret.Data["aws_access_key_id"][:])
+		awsSecretAccessKey := string(secret.Data["aws_secret_access_key"][:])
+
+		customCreds = credentials.NewStaticCredentials(awsAccessKey, awsSecretAccessKey, "")
+	} else {
+		logrus.Infof("Defaulting to credentials chain")
+	}
+
 	var s *session.Session
+
 	if len(triggerObj.Spec.Endpoint) > 0 {
-		_, err = url.ParseRequestURI(triggerObj.Spec.Endpoint)
+		_, err := url.ParseRequestURI(triggerObj.Spec.Endpoint)
 		if err != nil {
 			logrus.Errorf("Failed to setup stream processor for Kinesis trigger: %s. Invalid overide URL: %s for Kinesis service."+
 				" Error: %v", triggerObj.Namespace+"/"+triggerObj.Name, triggerObj.Spec.Endpoint, err)
