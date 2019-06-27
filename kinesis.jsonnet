@@ -29,7 +29,7 @@ local controllerEnv = [
 ];
 
 local controllerContainer =
-  container.default("kinesis-trigger-controller", "bitnami/kinesis-trigger-controller:latest") +
+  container.default("kinesis-trigger-controller", "kubeless/kinesis-trigger-controller:latest") +
   container.imagePullPolicy("IfNotPresent") +
   container.env(controllerEnv);
 
