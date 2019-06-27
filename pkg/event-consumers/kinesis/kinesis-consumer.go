@@ -213,7 +213,7 @@ func DeleteKinesisConsumer(triggerObj *kinesisApi.KinesisTrigger, funcName, ns s
 		delete(streamProcessors, uniqueID)
 		logrus.Infof("Stopped  Kinesis stream processor for the function %s associated with Kinesis trigger %s", funcName, triggerObj.Name)
 	} else {
-		logrus.Infof(" Kinesis stream processor for function %s associated with trigger doesn't exists. Good enough to skip the stop", funcName, triggerObj.Name)
+		logrus.Infof(" Kinesis stream processor for function %s associated with trigger %s doesn't exists. Good enough to skip the stop", funcName, triggerObj.Name)
 	}
 	return nil
 }
