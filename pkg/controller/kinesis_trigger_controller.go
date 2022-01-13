@@ -214,7 +214,8 @@ func (c *KinesisTriggerController) syncKinesisTrigger(key string) error {
 		return errors.New("Kinesis Trigger shard-id can't be empty. Please check the Kinesis trigger object %s" + key)
 	}
 	if triggerObj.Spec.Secret == "" {
-		return errors.New("Kinesis Trigger secret can't be empty. Please check the Kinesis trigger object %s" + key)
+		c.logger.Infof("Kinesis Trigger secret empty, default to credentials chain")
+		//return errors.New("Kinesis Trigger secret can't be empty. Please check the Kinesis trigger object %s" + key)
 	}
 
 	// Kinesis trigger API object is marked for deletion (DeletionTimestamp != nil), so lets process the delete update
@@ -251,10 +252,10 @@ func (c *KinesisTriggerController) syncKinesisTrigger(key string) error {
 	if err != nil {
 		return fmt.Errorf("Unable to find Function %s in namespace %s. Error %v", triggerObj.Spec.FunctionName, ns, err)
 	}
-	_, err = c.kubernetesClient.Core().Secrets(ns).Get(triggerObj.Spec.Secret, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("Unable to find secret %s in namespace %s. Error %v", triggerObj.Spec.Secret, ns, err)
-	}
+	//_, err = c.kubernetesClient.Core().Secrets(ns).Get(triggerObj.Spec.Secret, metav1.GetOptions{})
+	//if err != nil {
+	//	return fmt.Errorf("Unable to find secret %s in namespace %s. Error %v", triggerObj.Spec.Secret, ns, err)
+	//}
 
 	err = kinesis.CreateKinesisStreamConsumer(triggerObj, triggerObj.Spec.FunctionName, triggerObj.Namespace, c.kubernetesClient)
 	if err != nil {
